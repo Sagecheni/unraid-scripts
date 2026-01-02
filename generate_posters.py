@@ -206,7 +206,8 @@ def main() -> int:
 
         # 3) 生成（先写临时文件，成功后替换）
         #    同时准备 FFmpeg 报告文件
-        tmp = target.with_name(target.name + ".tmp")
+        #    注意：临时文件必须以 .jpg 结尾，否则 ffmpeg 报错 "Unable to choose an output format"
+        tmp = target.with_name(target.name + ".tmp.jpg")
         report_file = video.with_name(video.name + ".ffreport.log")
         ff_env = {"FFREPORT": f"file={report_file}:level=32"}
 
