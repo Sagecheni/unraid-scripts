@@ -268,7 +268,8 @@ def main() -> int:
                     tmp.unlink(missing_ok=True)
                 except Exception:
                     pass
-                print("❌ 彻底失败 (可能文件损坏 / 探测失败 / 超时)")
+                print(f"❌ 彻底失败: {video}")
+                print(f"   📝 错误报告: {report_file}")
                 # 需要的话把 err/err2 打出来方便排查
                 # print(err.strip()[:500])
                 # print(err2.strip()[:500])
