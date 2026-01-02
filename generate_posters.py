@@ -160,8 +160,9 @@ def main() -> int:
     print("========================================")
 
     # ffmpeg 输入侧参数（放在 -i 前，减少探测失败）
-    # probesize/analyzeduration 的意义与默认值见 ffmpeg 文档 :contentReference[oaicite:5]{index=5}
-    common_input = ["-hide_banner", "-loglevel", "error", "-analyzeduration", "20M", "-probesize", "20M"]
+    # probesize/analyzeduration 的意义与默认值见 ffmpeg 文档
+    # 针对 CloudDrive2/115 网盘挂载，调大探测包大小以应对网络延迟或文件头碎片
+    common_input = ["-hide_banner", "-loglevel", "error", "-analyzeduration", "100M", "-probesize", "100M"]
     common_output = ["-y", "-frames:v", "1", "-q:v", "2"]
 
     processed = 0
