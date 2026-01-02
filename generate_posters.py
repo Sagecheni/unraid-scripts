@@ -22,16 +22,21 @@ def which_or_exit(name: str) -> str:
     return p
 
 
-def run_with_timeout(cmd: list[str], timeout_s: int) -> Tuple[int, str]:
+def run_with_timeout(cmd: list[str], timeout_s: int, extra_env: Optional[dict] = None) -> Tuple[int, str]:
     """
     运行外部命令，超时则杀掉整个进程组，返回 (returncode, stderr_text)。
     """
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
+
     # 让子进程在独立进程组里，便于超时后 killpg（UNIX）
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        env=env,
         text=True,
         preexec_fn=os.setsid,
     )
@@ -200,9 +205,12 @@ def main() -> int:
             continue
 
         # 3) 生成（先写临时文件，成功后替换）
+        #    同时准备 FFmpeg 报告文件
         tmp = target.with_name(target.name + ".tmp")
+        report_file = video.with_name(video.name + ".ffreport.log")
+        ff_env = {"FFREPORT": f"file={report_file}:level=32"}
 
-        # 尝试 1：快速模式（-ss 在 -i 前，按 ffmpeg 文档属于 input seek） :contentReference[oaicite:6]{index=6}
+        # 尝试 1：快速模式（-ss 在 -i 前，按 ffmpeg 文档属于 input seek）
         cmd_fast = [
             ffmpeg, *common_input,
             "-ss", f"{t}",
@@ -210,12 +218,17 @@ def main() -> int:
             *common_output,
             str(tmp),
         ]
-        code, err = run_with_timeout(cmd_fast, args.fast_timeout)
+        code, err = run_with_timeout(cmd_fast, args.fast_timeout, extra_env=ff_env)
 
         ok = (code == 0 and tmp.exists() and tmp.stat().st_size > 0)
         if ok:
             os.replace(tmp, target)
             print("✅ 成功 (快速模式)")
+            # 成功则删除报告
+            try:
+                report_file.unlink(missing_ok=True)
+            except Exception:
+                pass
             created += 1
         else:
             # 清理失败产物
@@ -238,12 +251,17 @@ def main() -> int:
                 *common_output,
                 str(tmp),
             ]
-            code2, err2 = run_with_timeout(cmd_compat, args.compat_timeout)
+            code2, err2 = run_with_timeout(cmd_compat, args.compat_timeout, extra_env=ff_env)
 
             ok2 = (code2 == 0 and tmp.exists() and tmp.stat().st_size > 0)
             if ok2:
                 os.replace(tmp, target)
                 print("✅ 成功 (兼容模式)")
+                # 成功则删除报告
+                try:
+                    report_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
                 created += 1
             else:
                 try:
