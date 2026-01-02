@@ -80,20 +80,29 @@ def ffprobe_duration_seconds(ffprobe: str, video: Path, timeout_s: int = 15) -> 
 
 def choose_timestamp(snapshot_time: float, duration: Optional[float]) -> float:
     """
-    如果拿得到 duration，则避免 snapshot_time 超出时长导致失败。
+    针对 CD2/115 网盘环境的优化逻辑：
+    尽量不往后跳太多，防止超时/加载失败。
+    默认策略：
+    - 如果视频很短（<60s）：取中间。
+    - 否则：取 30s ~ 60s 之间的一个点（或指定点），确保能截到内容但又不至于读太久。
     """
+    # 如果用户没指定 snapshot_time (默认 120)，我们强制改写为更有利于云盘的值
+    # 这里我们假设如果 snapshot_time > 60 就视为“用户没特别指定或者原来的默认值”，
+    # 我们把它压缩到 45秒 左右，保证读取顺畅。
+    target = snapshot_time
+    if target > 60:
+        target = 45.0
+
     if duration is None or duration <= 0:
-        return max(0.0, snapshot_time)
+        return max(0.0, target)
 
-    # 特短视频：取中间
-    if duration < 6:
-        return max(0.0, duration * 0.5)
+    # 特短视频
+    if duration < 60:
+        if duration < 5:
+            return duration * 0.5
+        return min(target, duration * 0.5)
 
-    t = snapshot_time if snapshot_time > 0 else duration * 0.2
-    # 如果接近结尾，移到中间偏后
-    if t >= duration - 0.5:
-        t = duration * 0.6
-    return max(0.0, min(t, duration - 0.2))
+    return target
 
 
 def iter_video_files(root: Path, exts: Set[str], follow_links: bool = True) -> Iterable[Path]:
@@ -160,9 +169,8 @@ def main() -> int:
     print("========================================")
 
     # ffmpeg 输入侧参数（放在 -i 前，减少探测失败）
-    # probesize/analyzeduration 的意义与默认值见 ffmpeg 文档
-    # 针对 CloudDrive2/115 网盘挂载，调大探测包大小以应对网络延迟或文件头碎片
-    common_input = ["-hide_banner", "-loglevel", "error", "-analyzeduration", "100M", "-probesize", "100M"]
+    # probesize/analyzeduration 的意义与默认值见 ffmpeg 文档 :contentReference[oaicite:5]{index=5}
+    common_input = ["-hide_banner", "-loglevel", "error", "-analyzeduration", "20M", "-probesize", "20M"]
     common_output = ["-y", "-frames:v", "1", "-q:v", "2"]
 
     processed = 0
@@ -207,25 +215,32 @@ def main() -> int:
 
         # 3) 生成（先写临时文件，成功后替换）
         #    同时准备 FFmpeg 报告文件
-        #    注意：临时文件必须以 .jpg 结尾，否则 ffmpeg 报错 "Unable to choose an output format"
+        #    注意：临时文件必须以 .jpg 结尾
         tmp = target.with_name(target.name + ".tmp.jpg")
         report_file = video.with_name(video.name + ".ffreport.log")
         ff_env = {"FFREPORT": f"file={report_file}:level=32"}
 
-        # 尝试 1：快速模式（-ss 在 -i 前，按 ffmpeg 文档属于 input seek）
-        cmd_fast = [
+        # 【云盘优化版】直接使用“兼容模式”（解码并丢弃数据直到时间点）
+        # "-ss" 放在 input 之后，意味着 FFmpeg 会顺序读取并解码，直到 45s (默认)
+        # 虽然比 seek 慢，但这是对网络流最友好的方式，几乎不会 404 或超时。
+        
+        print(f"🐢 [云盘安全模式] 顺序读取至 {t:.2f}s 处截图...")
+        
+        cmd_safe = [
             ffmpeg, *common_input,
-            "-ss", f"{t}",
             "-i", str(video),
+            "-ss", f"{t}",
             *common_output,
             str(tmp),
         ]
-        code, err = run_with_timeout(cmd_fast, args.fast_timeout, extra_env=ff_env)
+        
+        # 因为是顺序读取，时间会比较久（取决于网速），超时给大一点
+        code, err = run_with_timeout(cmd_safe, timeout_s=180, extra_env=ff_env)
 
         ok = (code == 0 and tmp.exists() and tmp.stat().st_size > 0)
         if ok:
             os.replace(tmp, target)
-            print("✅ 成功 (快速模式)")
+            print("✅ 成功")
             # 成功则删除报告
             try:
                 report_file.unlink(missing_ok=True)
@@ -233,49 +248,19 @@ def main() -> int:
                 pass
             created += 1
         else:
-            # 清理失败产物
             try:
                 tmp.unlink(missing_ok=True)
             except Exception:
                 pass
-
-            # 尝试 2：兼容/更准确模式（-ss 在 -i 后，会先解码再丢弃到时间点，通常更稳但更慢） :contentReference[oaicite:7]{index=7}
-            # 你原脚本固定用 5 秒，这里也保留“尽量靠前”的策略
-            compat_t = 5.0
-            if dur is not None and dur < 6:
-                compat_t = max(0.0, dur * 0.5)
-
-            print(f"⚠️ 快速模式失败，切换到兼容模式 ({compat_t:.2f}s)...")
-            cmd_compat = [
-                ffmpeg, *common_input,
-                "-i", str(video),
-                "-ss", f"{compat_t}",
-                *common_output,
-                str(tmp),
-            ]
-            code2, err2 = run_with_timeout(cmd_compat, args.compat_timeout, extra_env=ff_env)
-
-            ok2 = (code2 == 0 and tmp.exists() and tmp.stat().st_size > 0)
-            if ok2:
-                os.replace(tmp, target)
-                print("✅ 成功 (兼容模式)")
-                # 成功则删除报告
+            
+            print(f"❌ 失败: {video}")
+            if video.is_symlink():
                 try:
-                    report_file.unlink(missing_ok=True)
+                    print(f"   � 软链接指向: {video.resolve()}")
                 except Exception:
                     pass
-                created += 1
-            else:
-                try:
-                    tmp.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                print(f"❌ 彻底失败: {video}")
-                print(f"   📝 错误报告: {report_file}")
-                # 需要的话把 err/err2 打出来方便排查
-                # print(err.strip()[:500])
-                # print(err2.strip()[:500])
-                failed += 1
+            print(f"   📝 错误报告: {report_file}")
+            failed += 1
 
         if args.cooldown > 0:
             time.sleep(args.cooldown)
