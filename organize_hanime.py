@@ -63,6 +63,10 @@ def get_clean_info(filename):
 
     # 3. 提取系列名
     name = re.sub(r"^(\[[^\]]+\]|[\s_])+", "", stem)
+
+    # 移除开头的纯数字编号（如 "01 鬼父2" -> "鬼父2"）
+    name = re.sub(r"^\d+[\s\._]*", "", name)
+
     split_patterns = [
         r"\s+第",
         r"\s*[\(\（]",
@@ -79,10 +83,20 @@ def get_clean_info(filename):
             name = name[: match.start()]
             break
 
-    # 移除结尾的 "数字.格式" 或 "数字 .格式" (如 "1.chs", "2.chs", "1 .chs")
+    # 移除结尾的各种标记和分隔符
+    # 1. 移除 "数字.格式" (如 "1.chs", "2.chs")
     name = re.sub(r"\s*\d+\s*\.(chs|cht|简体|繁体)\s*$", "", name, flags=re.I)
-    # 移除结尾的单独数字（如果前面有空格）
-    name = re.sub(r"\s+\d+\s*$", "", name)
+    # 2. 移除上卷/下卷/中卷等标记
+    name = re.sub(r"\s*(上卷|下卷|中卷|上巻|下巻|中巻)\s*$", "", name)
+    # 3. 移除结尾的序号标记（如 "Re-born1" -> "Re-born"， "Refresh2" -> "Refresh"）
+    name = re.sub(
+        r"(Re-?born|Re-?birth|Re-?fresh|REVENGE|harvest|Vacation|Rebuild)\d*\s*$",
+        r"\1",
+        name,
+        flags=re.I,
+    )
+    # 4. 移除结尾的单独数字（如果前面有空格或特殊字符）
+    name = re.sub(r"[\s\._-]+\d+\s*$", "", name)
 
     return name.strip(" _-"), episode, version, quality_folder
 
