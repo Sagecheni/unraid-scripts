@@ -14,14 +14,30 @@ def get_clean_info(filename):
 
     # 1. 提取版本信息
     version = ""
+    quality_tags = []
     for v in ["4K", "2K", "60FPS", "1080P", "CHS", "简体"]:
         if v in stem.upper():
             version += f"[{v}]"
+            if v in ["4K", "2K", "1080P"]:
+                quality_tags.append(v)
+
+    # 确定画质文件夹（按优先级：4K > 2K > 1080P）
+    quality_folder = ""
+    if "4K" in quality_tags:
+        quality_folder = "4K"
+    elif "2K" in quality_tags:
+        quality_folder = "2K"
+    elif "1080P" in quality_tags:
+        quality_folder = "1080P"
+
+    # 如果有60FPS，添加到画质文件夹名
+    if "60FPS" in version and quality_folder:
+        quality_folder = f"{quality_folder} 60FPS"
 
     # 2. 提取集数
     episode = ""
     ep_match = re.search(
-        r"(?:第|ep\.?|＃|#|Vol\.?)\s*([0-9一二三四五六七八九十]+)", stem, re.I
+        r"(?:第|ep\.?|＃|#|Vol\.?|\[S\d+E)\s*([0-9一二三四五六七八九十]+)", stem, re.I
     )
     if ep_match:
         num = ep_match.group(1)
@@ -55,6 +71,7 @@ def get_clean_info(filename):
         r"\s*#",
         r"\s*Vol\.?",
         r"\s*其の",
+        r"\s*\[S\d+E\d+\]",  # 移除 [S01E01] 这样的标记
     ]
     for p in split_patterns:
         match = re.search(p, name, re.I)
@@ -62,7 +79,12 @@ def get_clean_info(filename):
             name = name[: match.start()]
             break
 
-    return name.strip(" _-"), episode, version
+    # 移除结尾的 "数字.格式" 或 "数字 .格式" (如 "1.chs", "2.chs", "1 .chs")
+    name = re.sub(r"\s*\d+\s*\.(chs|cht|简体|繁体)\s*$", "", name, flags=re.I)
+    # 移除结尾的单独数字（如果前面有空格）
+    name = re.sub(r"\s+\d+\s*$", "", name)
+
+    return name.strip(" _-"), episode, version, quality_folder
 
 
 def main():
@@ -71,6 +93,11 @@ def main():
     parser.add_argument("--source", required=True, help="原始链接目录 (raw_links)")
     parser.add_argument("--target", required=True, help="整理后的目录 (Organized)")
     parser.add_argument("--log", default=None, help="日志文件路径")
+    parser.add_argument(
+        "--quality-folder",
+        action="store_true",
+        help="为不同画质创建子文件夹（如：系列名/4K/、系列名/2K/）",
+    )
     args = parser.parse_args()
 
     source_dir = args.source
@@ -136,14 +163,20 @@ def main():
                     continue
 
                 src_path = os.path.join(root, file)
-                series, ep, ver = get_clean_info(file)
+                series, ep, ver, quality = get_clean_info(file)
 
                 if len(series) < 2:
                     series = os.path.basename(root) if "202" not in root else "Unknown"
 
                 new_filename = f"{series} - S01E{ep if ep else '01'} {ver}{ext}"
+
                 # 在一级文件夹下按系列创建子文件夹
                 dest_folder = os.path.join(top_target_path, series)
+
+                # 如果启用画质分类且有画质信息，创建画质子文件夹
+                if args.quality_folder and quality:
+                    dest_folder = os.path.join(dest_folder, quality)
+
                 if not os.path.exists(dest_folder):
                     os.makedirs(dest_folder)
 
@@ -153,7 +186,12 @@ def main():
                 if not os.path.exists(dest_path):
                     try:
                         os.symlink(src_path, dest_path)
-                        logging.info(f"[新增] {top_folder}/{series}/{new_filename}")
+                        quality_path = (
+                            f"/{quality}" if args.quality_folder and quality else ""
+                        )
+                        logging.info(
+                            f"[新增] {top_folder}/{series}{quality_path}/{new_filename}"
+                        )
                     except OSError as e:
                         logging.error(f"[创建链接失败] {file}: {e}")
                     except Exception as e:
