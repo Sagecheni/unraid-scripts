@@ -1,245 +1,336 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# organize_hanime.py
 
-import os
-import re
-import pathlib
+import atexit
+import hashlib
+import json
 import logging
-import argparse  # 新增：用于解析参数
+import os
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Set
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# --- Configuration & Setup ---
+
+# Load environment variables
+load_dotenv()
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    print("Error: DEEPSEEK_API_KEY not found in environment variables.")
+    print("Please create a .env file based on .env.example")
+    sys.exit(1)
+
+# Default Paths (can be overridden by env vars)
+SOURCE_ROOT = Path(
+    os.getenv("SOURCE_ROOT", "/mnt/user/embydata/raw_links/Hanime/")
+).resolve()
+TARGET_ROOT = Path(
+    os.getenv("TARGET_ROOT", "/mnt/user/embydata/links/HAnime/")
+).resolve()
+CACHE_FILE = Path("hanime_cache.json")
+
+# Operational Config
+DRY_RUN = True  # Default to True for safety
+BATCH_SIZE = 30  # Number of filenames to send in one API call
+VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".ts", ".mov", ".wmv", ".iso", ".rmvb"}
+
+# Logging Setup
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("organize_hanime.log", encoding="utf-8"),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+if DRY_RUN:
+    logger.warning("Running in DRY RUN mode. No filesystem changes will be made.")
+
+# --- Cache System ---
 
 
-def get_clean_info(filename):
-    """解析系列名、集数和版本信息"""
-    stem = pathlib.Path(filename).stem
+class CacheManager:
+    def __init__(self, cache_path: Path):
+        self.cache_path = cache_path
+        self.data: Dict[str, dict] = {}
+        self.dirty = False
+        self.load()
+        atexit.register(self.save)
 
-    # 1. 提取版本信息
-    version = ""
-    quality_tags = []
-    for v in ["4K", "2K", "60FPS", "1080P", "CHS", "简体"]:
-        if v in stem.upper():
-            version += f"[{v}]"
-            if v in ["4K", "2K", "1080P"]:
-                quality_tags.append(v)
+    def load(self):
+        if self.cache_path.exists():
+            try:
+                with open(self.cache_path, "r", encoding="utf-8") as f:
+                    self.data = json.load(f)
+                logger.info(f"Loaded cache with {len(self.data)} entries.")
+            except Exception as e:
+                logger.error(f"Failed to load cache: {e}")
+                self.data = {}
+        else:
+            logger.info("No existing cache found. Starting fresh.")
 
-    # 确定画质文件夹（按优先级：4K > 2K > 1080P）
-    quality_folder = ""
-    if "4K" in quality_tags:
-        quality_folder = "4K"
-    elif "2K" in quality_tags:
-        quality_folder = "2K"
-    elif "1080P" in quality_tags:
-        quality_folder = "1080P"
+    def save(self):
+        if self.dirty:
+            try:
+                with open(self.cache_path, "w", encoding="utf-8") as f:
+                    json.dump(self.data, f, ensure_ascii=False, indent=2)
+                logger.info("Cache saved to disk.")
+                self.dirty = False
+            except Exception as e:
+                logger.error(f"Failed to save cache: {e}")
 
-    # 如果有60FPS，添加到画质文件夹名
-    if "60FPS" in version and quality_folder:
-        quality_folder = f"{quality_folder} 60FPS"
+    def get(self, key: str) -> Optional[dict]:
+        return self.data.get(key)
 
-    # 2. 提取集数
-    episode = ""
-    ep_match = re.search(
-        r"(?:第|ep\.?|＃|#|Vol\.?|\[S\d+E)\s*([0-9一二三四五六七八九十]+)", stem, re.I
-    )
-    if ep_match:
-        num = ep_match.group(1)
-        mapping = {
-            "一": "01",
-            "二": "02",
-            "三": "03",
-            "四": "04",
-            "五": "05",
-            "六": "06",
-            "七": "07",
-            "八": "08",
-            "九": "09",
-            "十": "10",
-            "上": "01",
-            "中": "02",
-            "下": "03",
-            "前": "01",
-            "后": "02",
-            "後": "02",
-        }
-        episode = mapping.get(num, num.zfill(2))
+    def set(self, key: str, value: dict):
+        self.data[key] = value
+        self.dirty = True
 
-    # 3. 提取系列名
-    name = re.sub(r"^(\[[^\]]+\]|[\s_])+", "", stem)
 
-    # 移除开头的纯数字编号（如 "01 鬼父2" -> "鬼父2"）
-    name = re.sub(r"^\d+[\s\._]*", "", name)
+cache_manager = CacheManager(CACHE_FILE)
 
-    split_patterns = [
-        r"\s+第",
-        r"\s*[\(\（]",
-        r"\s*ep\.?",
-        r"\s*＃",
-        r"\s*#",
-        r"\s*Vol\.?",
-        r"\s*其の",
-        r"\s*\[S\d+E\d+\]",  # 移除 [S01E01] 这样的标记
-    ]
-    for p in split_patterns:
-        match = re.search(p, name, re.I)
-        if match:
-            name = name[: match.start()]
-            break
+# --- DeepSeek API Integration ---
 
-    # 移除结尾的各种标记和分隔符
-    # 1. 移除 "数字.格式" (如 "1.chs", "2.chs")
-    name = re.sub(r"\s*\d+\s*\.(chs|cht|简体|繁体)\s*$", "", name, flags=re.I)
-    # 2. 移除上卷/下卷/中卷等标记
-    name = re.sub(r"\s*(上卷|下卷|中卷|上巻|下巻|中巻)\s*$", "", name)
-    # 3. 移除结尾的序号标记（如 "Re-born1" -> "Re-born"， "Refresh2" -> "Refresh"）
-    name = re.sub(
-        r"(Re-?born|Re-?birth|Re-?fresh|REVENGE|harvest|Vacation|Rebuild)\d*\s*$",
-        r"\1",
-        name,
-        flags=re.I,
-    )
-    # 4. 移除结尾的单独数字（如果前面有空格或特殊字符）
-    name = re.sub(r"[\s\._-]+\d+\s*$", "", name)
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-    return name.strip(" _-"), episode, version, quality_folder
+SYSTEM_PROMPT = """
+You are a specialized file renaming assistant for Japanese animated series. 
+Your task is to parse unstructured filenames and return structured JSON data.
+
+Output Format: A strictly valid JSON List of objects.
+Example:
+[
+  {
+    "original_filename": "[魔人] 魔法闘姫リルスティア 第二話.mkv",
+    "series_name": "魔法闘姫リルスティア",
+    "standard_filename": "魔法闘姫リルスティア - S01E02.mkv"
+  }
+]
+
+Rules:
+1. `series_name`: Clean series name. Remove prefixes like [250131], [Group], etc.
+2. `standard_filename`: Format as "{series_name} - S{season}E{episode}{extra_info}.{ext}".
+   - Season defaults to 01 (S01).
+   - Episode should be zero-padded (E01, E02).
+   - Extra info (e.g., 4K, Uncensored) should be appended if present.
+3. If specific episode info is missing, use "S01E01" or parse logically.
+4. Ensure the output list length matches the input list length.
+"""
+
+
+def batch_parse_filenames(filenames: List[str]) -> Dict[str, dict]:
+    """
+    Sends a batch of filenames to DeepSeek API and returns a dict mapping filename -> parsed data.
+    """
+    if not filenames:
+        return {}
+
+    logger.info(f"Sending batch of {len(filenames)} files to DeepSeek API...")
+
+    prompt_content = "Parse the following filenames:\n" + "\n".join(filenames)
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt_content},
+            ],
+            response_format={"type": "json_object"},  # DeepSeek supports json mode
+        )
+
+        # DeepSeek API sometimes returns markdown code block, or just raw JSON
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+
+        # Handle cases where the model might wrap the list in a key like "files": [...]
+        # But our prompt asks for a direct list. Parsing carefully.
+        try:
+            parsed_data = json.loads(content)
+        except json.JSONDecodeError:
+            logger.error("Failed to decode JSON from API response.")
+            logger.debug(f"Raw API response: {content}")
+            return {}
+
+        # Normalize result if it's inside a dict key
+        if isinstance(parsed_data, dict):
+            # Look for a list value
+            for val in parsed_data.values():
+                if isinstance(val, list):
+                    parsed_data = val
+                    break
+
+        if not isinstance(parsed_data, list):
+            logger.error("API response is not a list as expected.")
+            return {}
+
+        result_map = {}
+        for item in parsed_data:
+            orig = item.get("original_filename")
+            if orig and orig in filenames:
+                result_map[orig] = item
+
+        logger.info(f"Successfully parsed {len(result_map)} files from batch.")
+        return result_map
+
+    except Exception as e:
+        logger.error(f"API Call failed: {e}")
+        return {}
+
+
+# --- Core Logic ---
+
+
+def get_file_hash(path: Path) -> str:
+    """Returns a hash of the file path (relative to source root) to use as cache key."""
+    # Using relative path as key because file content hash is too slow for large files
+    # and we assume filenames don't change often without context change.
+    # To be safer, we can include size.
+    try:
+        stat = path.stat()
+        key_str = f"{path.relative_to(SOURCE_ROOT)}|{stat.st_size}"
+        return hashlib.md5(key_str.encode("utf-8")).hexdigest()
+    except Exception:
+        return hashlib.md5(str(path).encode("utf-8")).hexdigest()
+
+
+def scan_files() -> Dict[str, Path]:
+    """
+    Scans SOURCE_ROOT for video files throughout all subdirectories of Layer 1 folders.
+    Returns: Dict[file_hash, absolute_path]
+    Key is file hash (or unique ID), Value is Path object.
+    Actually, we need to preserve the Layer 1 folder name.
+    """
+    files_to_process = {}
+
+    if not SOURCE_ROOT.exists():
+        logger.error(f"Source root {SOURCE_ROOT} does not exist!")
+        return {}
+
+    logger.info(f"Scanning {SOURCE_ROOT}...")
+
+    # Iterate over Layer 1 directories (e.g., 2024, 2025, Cartoon)
+    for layer1_dir in SOURCE_ROOT.iterdir():
+        if layer1_dir.is_dir():
+            # Walk through all subdirectories of this Layer 1 directory
+            for file_path in layer1_dir.rglob("*"):
+                if file_path.is_file() and file_path.suffix.lower() in VIDEO_EXTENSIONS:
+                    # We store the file path.
+                    # We need to associate it with its Layer 1 parent for later use.
+                    files_to_process[file_path] = layer1_dir.name
+
+    logger.info(f"Found {len(files_to_process)} video files.")
+    return files_to_process
+
+
+def safe_symlink(source: Path, target: Path):
+    """Creates a symlink safely, handling existing files."""
+    if DRY_RUN:
+        logger.info(f"[DRY RUN] Link: {target} -> {source}")
+        return
+
+    if target.exists():
+        if target.is_symlink() and target.readlink() == source:
+            logger.debug(f"Skipping identical link: {target}")
+            return
+
+        # Conflict: Same filename but different source?
+        # Handle versioning strategy: append to filename
+        base_name = target.stem
+        suffix = target.suffix
+        counter = 1
+        while target.exists():
+            # If it's a symlink to the same file, break
+            if target.is_symlink() and target.readlink() == source:
+                return
+
+            target = target.with_name(f"{base_name}_v{counter}{suffix}")
+            counter += 1
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(source)
+        logger.info(f"Linked: {target} -> {source}")
+    except Exception as e:
+        logger.error(f"Failed to link {source} to {target}: {e}")
 
 
 def main():
-    # --- 参数解析器 ---
-    parser = argparse.ArgumentParser(description="HAnime Series Organizer")
-    parser.add_argument("--source", required=True, help="原始链接目录 (raw_links)")
-    parser.add_argument("--target", required=True, help="整理后的目录 (Organized)")
-    parser.add_argument("--log", default=None, help="日志文件路径")
-    parser.add_argument(
-        "--quality-folder",
-        action="store_true",
-        help="为不同画质创建子文件夹（如：系列名/4K/、系列名/2K/）",
-    )
-    args = parser.parse_args()
+    if not SOURCE_ROOT.exists():
+        logger.critical(f"Source directory not found: {SOURCE_ROOT}")
+        return
 
-    source_dir = args.source
-    target_dir = args.target
+    valid_files = scan_files()  # Map: Path -> Layer1_Name
 
-    # 输入验证
-    if not os.path.exists(source_dir):
-        print(f"错误: 源目录不存在: {source_dir}")
-        return 1
+    batch_queue = []
+    file_map_for_batch = {}  # filename -> (full_path, layer1_name, cache_key)
 
-    if not os.path.isdir(source_dir):
-        print(f"错误: 源路径不是目录: {source_dir}")
-        return 1
+    # 1. Identify files needing parsing
+    for file_path, layer1_name in valid_files.items():
+        cache_key = get_file_hash(file_path)
+        cached_result = cache_manager.get(cache_key)
 
-    if os.path.abspath(source_dir) == os.path.abspath(target_dir):
-        print(f"错误: 源目录和目标目录不能相同")
-        return 1
+        if cached_result:
+            # Already have data, process immediately
+            process_file_result(file_path, layer1_name, cached_result)
+        else:
+            # Need to ask API
+            batch_queue.append(file_path.name)
+            file_map_for_batch[file_path.name] = (file_path, layer1_name, cache_key)
 
-    # 日志配置
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
-    if args.log:
-        handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
+            if len(batch_queue) >= BATCH_SIZE:
+                process_batch(batch_queue, file_map_for_batch)
+                batch_queue = []
+                file_map_for_batch = {}
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=handlers,
-    )
+    # Process remaining batch
+    if batch_queue:
+        process_batch(batch_queue, file_map_for_batch)
 
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
-    logging.info(f"开始整理: {source_dir} -> {target_dir}")
+    logger.info("Organization complete.")
 
-    current_links = set()
-    extensions = {".mp4", ".mkv", ".avi", ".wmv", ".m4v"}
 
-    # 获取源目录下的一级文件夹
-    try:
-        top_level_folders = [
-            d
-            for d in os.listdir(source_dir)
-            if os.path.isdir(os.path.join(source_dir, d))
-        ]
-    except OSError as e:
-        logging.error(f"无法读取源目录: {e}")
-        return 1
+def process_batch(filenames: List[str], context_map: Dict):
+    results = batch_parse_filenames(filenames)
 
-    # 对每个一级文件夹进行整理
-    for top_folder in top_level_folders:
-        top_source_path = os.path.join(source_dir, top_folder)
-        top_target_path = os.path.join(target_dir, top_folder)
+    for filename, parsed_info in results.items():
+        if filename in context_map:
+            file_path, layer1_name, cache_key = context_map[filename]
 
-        if not os.path.exists(top_target_path):
-            os.makedirs(top_target_path)
+            # Save to cache
+            cache_manager.set(cache_key, parsed_info)
 
-        logging.info(f"处理分类: {top_folder}")
+            # Execute Symlink
+            process_file_result(file_path, layer1_name, parsed_info)
+        else:
+            logger.warning(f"Received result for unknown file: {filename}")
 
-        # 在该一级文件夹下递归查找视频文件
-        for root, dirs, files in os.walk(top_source_path):
-            for file in files:
-                ext = pathlib.Path(file).suffix.lower()
-                if ext not in extensions:
-                    continue
 
-                src_path = os.path.join(root, file)
-                series, ep, ver, quality = get_clean_info(file)
+def process_file_result(source_path: Path, layer1_name: str, info: dict):
+    """
+    Constructs the target path and creates the symlink.
+    Target structure: TARGET_ROOT / Layer1 / SeriesName / StandardFilename
+    """
+    series_name = info.get("series_name", "Unknown Series").strip()
+    # Sanitize series name for filesystem
+    series_name = "".join([c for c in series_name if c not in '<>:"/\\|?*'])
 
-                if len(series) < 2:
-                    series = os.path.basename(root) if "202" not in root else "Unknown"
+    std_filename = info.get("standard_filename", source_path.name).strip()
+    # Sanitize filename
+    std_filename = "".join([c for c in std_filename if c not in '<>:"/\\|?*'])
 
-                new_filename = f"{series} - S01E{ep if ep else '01'} {ver}{ext}"
+    target_path = TARGET_ROOT / layer1_name / series_name / std_filename
 
-                # 在一级文件夹下按系列创建子文件夹
-                dest_folder = os.path.join(top_target_path, series)
-
-                # 如果启用画质分类且有画质信息，创建画质子文件夹
-                if args.quality_folder and quality:
-                    dest_folder = os.path.join(dest_folder, quality)
-
-                if not os.path.exists(dest_folder):
-                    os.makedirs(dest_folder)
-
-                dest_path = os.path.join(dest_folder, new_filename)
-                current_links.add(dest_path)
-
-                if not os.path.exists(dest_path):
-                    try:
-                        os.symlink(src_path, dest_path)
-                        quality_path = (
-                            f"/{quality}" if args.quality_folder and quality else ""
-                        )
-                        logging.info(
-                            f"[新增] {top_folder}/{series}{quality_path}/{new_filename}"
-                        )
-                    except OSError as e:
-                        logging.error(f"[创建链接失败] {file}: {e}")
-                    except Exception as e:
-                        logging.error(f"[未知错误] {file}: {e}")
-
-    # 清理失效链接（只删除目标不存在的链接）
-    for root, dirs, files in os.walk(target_dir):
-        for file in files:
-            f_path = os.path.join(root, file)
-            if os.path.islink(f_path):
-                try:
-                    link_target = os.readlink(f_path)
-                    # 只删除指向不存在文件的失效链接
-                    if not os.path.exists(link_target):
-                        os.remove(f_path)
-                        logging.warning(f"[清理失效链接] {file}")
-                except OSError as e:
-                    logging.error(f"[链接错误] {file}: {e}")
-                    try:
-                        os.remove(f_path)
-                        logging.warning(f"[清理损坏链接] {file}")
-                    except Exception as e2:
-                        logging.error(f"[删除失败] {file}: {e2}")
-
-    # 清理空目录
-    for root, dirs, files in os.walk(target_dir, topdown=False):
-        for dir_name in dirs:
-            dir_path = os.path.join(root, dir_name)
-            try:
-                if not os.listdir(dir_path):
-                    os.rmdir(dir_path)
-                    logging.info(f"[清理空目录] {dir_name}")
-            except OSError:
-                pass  # 目录可能不为空或无权限删除
+    safe_symlink(source_path, target_path)
 
 
 if __name__ == "__main__":

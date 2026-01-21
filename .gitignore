@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# 环境变量配置（包含密钥，不要提交到git）
+.env
+
+# 缓存文件
+series_name_cache.json
+
+# 日志文件
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
