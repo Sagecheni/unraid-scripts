@@ -107,34 +107,57 @@ def main():
     current_links = set()
     extensions = {".mp4", ".mkv", ".avi", ".wmv", ".m4v"}
 
-    for root, dirs, files in os.walk(source_dir):
-        for file in files:
-            ext = pathlib.Path(file).suffix.lower()
-            if ext not in extensions:
-                continue
+    # 获取源目录下的一级文件夹
+    try:
+        top_level_folders = [
+            d
+            for d in os.listdir(source_dir)
+            if os.path.isdir(os.path.join(source_dir, d))
+        ]
+    except OSError as e:
+        logging.error(f"无法读取源目录: {e}")
+        return 1
 
-            src_path = os.path.join(root, file)
-            series, ep, ver = get_clean_info(file)
+    # 对每个一级文件夹进行整理
+    for top_folder in top_level_folders:
+        top_source_path = os.path.join(source_dir, top_folder)
+        top_target_path = os.path.join(target_dir, top_folder)
 
-            if len(series) < 2:
-                series = os.path.basename(root) if "202" not in root else "Unknown"
+        if not os.path.exists(top_target_path):
+            os.makedirs(top_target_path)
 
-            new_filename = f"{series} - S01E{ep if ep else '01'} {ver}{ext}"
-            dest_folder = os.path.join(target_dir, series)
-            if not os.path.exists(dest_folder):
-                os.makedirs(dest_folder)
+        logging.info(f"处理分类: {top_folder}")
 
-            dest_path = os.path.join(dest_folder, new_filename)
-            current_links.add(dest_path)
+        # 在该一级文件夹下递归查找视频文件
+        for root, dirs, files in os.walk(top_source_path):
+            for file in files:
+                ext = pathlib.Path(file).suffix.lower()
+                if ext not in extensions:
+                    continue
 
-            if not os.path.exists(dest_path):
-                try:
-                    os.symlink(src_path, dest_path)
-                    logging.info(f"[新增] {new_filename}")
-                except OSError as e:
-                    logging.error(f"[创建链接失败] {file}: {e}")
-                except Exception as e:
-                    logging.error(f"[未知错误] {file}: {e}")
+                src_path = os.path.join(root, file)
+                series, ep, ver = get_clean_info(file)
+
+                if len(series) < 2:
+                    series = os.path.basename(root) if "202" not in root else "Unknown"
+
+                new_filename = f"{series} - S01E{ep if ep else '01'} {ver}{ext}"
+                # 在一级文件夹下按系列创建子文件夹
+                dest_folder = os.path.join(top_target_path, series)
+                if not os.path.exists(dest_folder):
+                    os.makedirs(dest_folder)
+
+                dest_path = os.path.join(dest_folder, new_filename)
+                current_links.add(dest_path)
+
+                if not os.path.exists(dest_path):
+                    try:
+                        os.symlink(src_path, dest_path)
+                        logging.info(f"[新增] {top_folder}/{series}/{new_filename}")
+                    except OSError as e:
+                        logging.error(f"[创建链接失败] {file}: {e}")
+                    except Exception as e:
+                        logging.error(f"[未知错误] {file}: {e}")
 
     # 清理失效链接（只删除目标不存在的链接）
     for root, dirs, files in os.walk(target_dir):
