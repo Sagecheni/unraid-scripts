@@ -34,7 +34,9 @@ TARGET_ROOT = Path(
 CACHE_FILE = Path("hanime_cache.json")
 
 # Operational Config
-DRY_RUN = True  # Default to True for safety
+# Operational Config
+# Default to True (Safe Mode) unless explicitly set to 'false'
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() != "false"
 BATCH_SIZE = 30  # Number of filenames to send in one API call
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".ts", ".mov", ".wmv", ".iso", ".rmvb"}
 
