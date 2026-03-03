@@ -66,6 +66,11 @@ def main():
             if "www.98T.la@" in dirname:
                 old_dirpath = os.path.join(root, dirname)
                 new_dirname = dirname.replace("www.98T.la@", "").lstrip()
+
+                if not new_dirname:
+                    print(f"\n[跳过] 文件夹 {dirname} 清理后为空，跳过处理。")
+                    continue
+
                 new_dirpath = os.path.join(root, new_dirname)
                 print(f"\n[发现带标记的文件夹] {dirname}")
                 print(f"  [清理后] -> {new_dirname}")
@@ -85,6 +90,11 @@ def main():
             if "www.98T.la@" in filename:
                 old_filepath = os.path.join(root, filename)
                 cleaned_filename = filename.replace("www.98T.la@", "").lstrip()
+
+                if not cleaned_filename:
+                    print(f"\n[跳过] 文件 {filename} 清理后为空，跳过处理。")
+                    continue
+
                 new_filepath = os.path.join(root, cleaned_filename)
                 print(f"\n[发现带标记的文件] {filename}")
                 print(f"  [清理后] -> {cleaned_filename}")
