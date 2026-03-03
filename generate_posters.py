@@ -170,8 +170,29 @@ def iter_video_files(
 
 
 def poster_path_for(video: Path) -> Path:
+    """
+    Generate poster path with filename truncation for Linux 255-byte limit.
+    Truncates the original filename if adding '-poster.jpg' would exceed the limit.
+    """
     base = video.with_suffix("")
-    return Path(str(base) + "-poster.jpg")
+    stem = base.name
+    poster_suffix = "-poster.jpg"
+    parent = base.parent
+    poster_name = stem + poster_suffix
+    max_filename_bytes = 255
+
+    if len(poster_name.encode("utf-8")) <= max_filename_bytes:
+        return parent / poster_name
+
+    # Truncate by bytes (not chars) to preserve UTF-8 validity
+    suffix_bytes = len(poster_suffix.encode("utf-8"))
+    max_stem_bytes = max_filename_bytes - suffix_bytes
+    stem_bytes = stem.encode("utf-8")
+    while len(stem_bytes) > max_stem_bytes:
+        stem_bytes = stem_bytes[:-1]
+
+    truncated_stem = stem_bytes.decode("utf-8", errors="ignore")
+    return parent / (truncated_stem + poster_suffix)
 
 
 def process_video(
