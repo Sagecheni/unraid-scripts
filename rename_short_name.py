@@ -63,7 +63,46 @@ def main():
     print(f"开始扫描目录: {TARGET_DIR}")
 
     for root, dirs, files in os.walk(TARGET_DIR):
+        # 先处理文件夹名
+        for dirname in dirs:
+            if "www.98T.la@" in dirname:
+                old_dirpath = os.path.join(root, dirname)
+                new_dirname = dirname.replace("www.98T.la@", "")
+                new_dirpath = os.path.join(root, new_dirname)
+                print(f"\n[发现带标记的文件夹] {dirname}")
+                print(f"  [清理后] -> {new_dirname}")
+
+                if not DRY_RUN:
+                    try:
+                        os.rename(old_dirpath, new_dirpath)
+                        print("  [成功] 文件夹已重命名。")
+                        time.sleep(1.5)
+                    except Exception as e:
+                        print(f"  [失败] 重命名出错: {e}")
+                else:
+                    print("  [DRY_RUN] 演练模式，未进行实际重命名。")
+
         for filename in files:
+            # 先清理文件名中的标记
+            if "www.98T.la@" in filename:
+                old_filepath = os.path.join(root, filename)
+                cleaned_filename = filename.replace("www.98T.la@", "")
+                new_filepath = os.path.join(root, cleaned_filename)
+                print(f"\n[发现带标记的文件] {filename}")
+                print(f"  [清理后] -> {cleaned_filename}")
+
+                if not DRY_RUN:
+                    try:
+                        os.rename(old_filepath, new_filepath)
+                        print("  [成功] 文件已重命名。")
+                        time.sleep(1.5)
+                    except Exception as e:
+                        print(f"  [失败] 重命名出错: {e}")
+                else:
+                    print("  [DRY_RUN] 演练模式，未进行实际重命名。")
+
+                # 更新 filename 为清理后的名字，继续后续长度检查
+                filename = cleaned_filename
             # 只处理过长的文件
             if len(filename) > MAX_FILENAME_LENGTH:
                 old_filepath = os.path.join(root, filename)
