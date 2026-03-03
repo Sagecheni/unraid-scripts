@@ -16,7 +16,7 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/98堂"
 
 # 触发重命名的文件名长度阈值（超过此长度的才处理）
-MAX_FILENAME_LENGTH = 30
+MAX_FILENAME_LENGTH = 60
 
 # 是否为“演练模式”？设为 True 时只会打印出结果，不会真实重命名文件。强烈建议先保持 True！
 DRY_RUN = True
