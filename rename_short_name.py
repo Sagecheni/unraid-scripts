@@ -1,5 +1,6 @@
 import os
 import time
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -78,7 +79,8 @@ def get_shortened_name(old_name):
 def remove_marker(name):
     """不区分大小写地移除 www.98T.la@ 标记"""
     import re
-    return re.sub(r'www\.98t\.la@', '', name, flags=re.IGNORECASE)
+
+    return re.sub(r"www\.98t\.la@", "", name, flags=re.IGNORECASE)
 
 
 def main():
@@ -87,7 +89,7 @@ def main():
     for root, dirs, files in os.walk(TARGET_DIR):
         # 先处理文件夹名
         for dirname in dirs:
-            if re.search(r'www\.98t\.la@', dirname, re.IGNORECASE):
+            if re.search(r"www\.98t\.la@", dirname, re.IGNORECASE):
                 old_dirpath = os.path.join(root, dirname)
                 new_dirname = remove_marker(dirname).lstrip()
 
@@ -116,7 +118,7 @@ def main():
                 continue
 
             # 先清理文件名中的标记
-            if re.search(r'www\.98t\.la@', filename, re.IGNORECASE):
+            if re.search(r"www\.98t\.la@", filename, re.IGNORECASE):
                 old_filepath = os.path.join(root, filename)
                 cleaned_filename = remove_marker(filename).lstrip()
 
