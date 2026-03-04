@@ -85,6 +85,22 @@ def remove_marker(name):
     return re.sub(r"www\.98t\.la@", "", name, flags=re.IGNORECASE)
 
 
+def get_unique_filename(directory, filename):
+    """如果文件名已存在，添加序号避免覆盖"""
+    filepath = os.path.join(directory, filename)
+    if not os.path.exists(filepath):
+        return filename
+
+    name, ext = os.path.splitext(filename)
+    counter = 1
+    while True:
+        new_filename = f"{name}_{counter}{ext}"
+        new_filepath = os.path.join(directory, new_filename)
+        if not os.path.exists(new_filepath):
+            return new_filename
+        counter += 1
+
+
 def main():
     print(f"开始扫描目录: {TARGET_DIR}")
 
@@ -99,6 +115,7 @@ def main():
                     print(f"\n[跳过] 文件夹 {dirname} 清理后为空，跳过处理。")
                     continue
 
+                new_dirname = get_unique_filename(root, new_dirname)
                 new_dirpath = os.path.join(root, new_dirname)
                 print(f"\n[发现带标记的文件夹] {dirname}")
                 print(f"  [清理后] -> {new_dirname}")
@@ -128,6 +145,7 @@ def main():
                     print(f"\n[跳过] 文件 {filename} 清理后为空，跳过处理。")
                     continue
 
+                cleaned_filename = get_unique_filename(root, cleaned_filename)
                 new_filepath = os.path.join(root, cleaned_filename)
                 print(f"\n[发现带标记的文件] {filename}")
                 print(f"  [清理后] -> {cleaned_filename}")
@@ -165,6 +183,7 @@ def main():
                     print("  [!] AI 试图更改路径，跳过此文件。")
                     continue
 
+                new_filename = get_unique_filename(root, new_filename)
                 new_filepath = os.path.join(root, new_filename)
                 print(f"  [AI 建议] -> {new_filename}")
 
