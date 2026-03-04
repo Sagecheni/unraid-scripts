@@ -75,15 +75,21 @@ def get_shortened_name(old_name):
         return None
 
 
+def remove_marker(name):
+    """不区分大小写地移除 www.98T.la@ 标记"""
+    import re
+    return re.sub(r'www\.98t\.la@', '', name, flags=re.IGNORECASE)
+
+
 def main():
     print(f"开始扫描目录: {TARGET_DIR}")
 
     for root, dirs, files in os.walk(TARGET_DIR):
         # 先处理文件夹名
         for dirname in dirs:
-            if "www.98T.la@" in dirname:
+            if re.search(r'www\.98t\.la@', dirname, re.IGNORECASE):
                 old_dirpath = os.path.join(root, dirname)
-                new_dirname = dirname.replace("www.98T.la@", "").lstrip()
+                new_dirname = remove_marker(dirname).lstrip()
 
                 if not new_dirname:
                     print(f"\n[跳过] 文件夹 {dirname} 清理后为空，跳过处理。")
@@ -110,9 +116,9 @@ def main():
                 continue
 
             # 先清理文件名中的标记
-            if "www.98T.la@" in filename:
+            if re.search(r'www\.98t\.la@', filename, re.IGNORECASE):
                 old_filepath = os.path.join(root, filename)
-                cleaned_filename = filename.replace("www.98T.la@", "").lstrip()
+                cleaned_filename = remove_marker(filename).lstrip()
 
                 if not cleaned_filename:
                     print(f"\n[跳过] 文件 {filename} 清理后为空，跳过处理。")
