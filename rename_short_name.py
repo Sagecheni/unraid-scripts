@@ -149,15 +149,16 @@ def main():
                 if new_filename == filename:
                     print("  [!] AI 返回的文件名与原文件名相同，跳过。")
                     continue
-                    # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
-                    if "/" in new_filename or "\\" in new_filename:
-                        print("  [!] AI 试图更改路径，跳过此文件。")
-                        continue
 
-                    new_filepath = os.path.join(root, new_filename)
-                    print(f"  [AI 建议] -> {new_filename}")
+                # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
+                if "/" in new_filename or "\\" in new_filename:
+                    print("  [!] AI 试图更改路径，跳过此文件。")
+                    continue
 
-                    if not DRY_RUN:
+                new_filepath = os.path.join(root, new_filename)
+                print(f"  [AI 建议] -> {new_filename}")
+
+                if not DRY_RUN:
                         try:
                             os.rename(old_filepath, new_filepath)
                             print("  [成功] 文件已重命名。")
