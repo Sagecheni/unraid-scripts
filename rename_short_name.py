@@ -131,6 +131,8 @@ def main():
                     print("  [!] AI 未返回建议，跳过此文件。")
                     continue
 
+                print(f"  [调试] AI 返回: {new_filename}")
+
                 if new_filename == filename:
                     print("  [!] AI 返回的文件名与原文件名相同，跳过。")
                     continue
