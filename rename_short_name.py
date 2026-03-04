@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 # ================= 配置区 =================
-# 填写你的 DeepSeek API Key
+# 填写你的 API Key
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+API_KEY = os.getenv("GLOBALAI_API_KEY")
 
 # 填写你的 CD2 挂载路径（请修改为你实际的路径，建议先用一个子文件夹测试！）
 TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/98堂"
@@ -22,11 +22,23 @@ MAX_FILENAME_LENGTH = 60
 DRY_RUN = True
 
 # 视频文件扩展名
-VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.strm'}
+VIDEO_EXTENSIONS = {
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".m4v",
+    ".mpg",
+    ".mpeg",
+    ".strm",
+}
 # ==========================================
 
-# 初始化 DeepSeek 客户端 (利用 OpenAI SDK)
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+# 初始化 Grok 客户端 (利用 OpenAI SDK)
+client = OpenAI(api_key=API_KEY, base_url="https://globalai.vip")
 
 
 def get_shortened_name(old_name):
@@ -39,12 +51,15 @@ def get_shortened_name(old_name):
     3. 长度必须控制在 60 个字符以内（优先使用简洁的关键词组合）。
     4. 必须保留原有的文件扩展名（如 .mp4, .mkv, .strm）。
     5. 绝对只能输出最终的文件名，不要包含任何解释、确认语或多余内容。
+
     原文件名：{old_name}
+
+    缩短后的文件名：
     """
 
     try:
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="grok-4-1-fast-non-reasoning",
             messages=[
                 {
                     "role": "system",
@@ -58,7 +73,7 @@ def get_shortened_name(old_name):
         print(f"  [API原始返回] {result}")
         return result
     except Exception as e:
-        print(f"  [!] DeepSeek API 请求失败: {e}")
+        print(f"  [!] API 请求失败: {e}")
         return None
 
 
