@@ -54,7 +54,9 @@ def get_shortened_name(old_name):
             ],
             temperature=0.1,  # 极低的温度保证输出稳定
         )
-        return response.choices[0].message.content.strip()
+        result = response.choices[0].message.content.strip()
+        print(f"  [API原始返回] {result}")
+        return result
     except Exception as e:
         print(f"  [!] DeepSeek API 请求失败: {e}")
         return None
