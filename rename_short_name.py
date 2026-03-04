@@ -18,8 +18,11 @@ TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/98堂"
 # 触发重命名的文件名长度阈值（超过此长度的才处理）
 MAX_FILENAME_LENGTH = 60
 
-# 是否为“演练模式”？设为 True 时只会打印出结果，不会真实重命名文件。强烈建议先保持 True！
+# 是否为”演练模式”？设为 True 时只会打印出结果，不会真实重命名文件。强烈建议先保持 True！
 DRY_RUN = True
+
+# 视频文件扩展名
+VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.strm'}
 # ==========================================
 
 # 初始化 DeepSeek 客户端 (利用 OpenAI SDK)
@@ -86,6 +89,11 @@ def main():
                     print("  [DRY_RUN] 演练模式，未进行实际重命名。")
 
         for filename in files:
+            # 只处理视频文件
+            _, ext = os.path.splitext(filename)
+            if ext.lower() not in VIDEO_EXTENSIONS:
+                continue
+
             # 先清理文件名中的标记
             if "www.98T.la@" in filename:
                 old_filepath = os.path.join(root, filename)
