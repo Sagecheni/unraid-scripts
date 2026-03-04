@@ -12,6 +12,8 @@ load_dotenv()
 # 填写你的 API Key
 
 API_KEY = os.getenv("GLOBALAI_API_KEY")
+if not API_KEY:
+    raise ValueError("环境变量 GLOBALAI_API_KEY 未设置，请在 .env 文件中配置")
 
 # 填写你的 CD2 挂载路径（请修改为你实际的路径，建议先用一个子文件夹测试！）
 TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/Hentai"
@@ -83,6 +85,20 @@ def remove_marker(name):
     import re
 
     return re.sub(r"www\.98t\.la@", "", name, flags=re.IGNORECASE)
+
+
+def sanitize_filename(filename):
+    """清理文件名中的非法字符"""
+    # 移除或替换非法字符
+    illegal_chars = r'[<>:"/\\|?*]'
+    sanitized = re.sub(illegal_chars, '', filename)
+    # 限制文件名长度（保留扩展名）
+    name, ext = os.path.splitext(sanitized)
+    if len(sanitized.encode('utf-8')) > 255:
+        max_name_len = 255 - len(ext.encode('utf-8')) - 10  # 留一些余量
+        name = name[:max_name_len]
+        sanitized = name + ext
+    return sanitized.strip()
 
 
 def get_unique_filename(directory, filename):
@@ -178,11 +194,20 @@ def main():
                     print("  [!] AI 返回的文件名与原文件名相同，跳过。")
                     continue
 
+                # 验证扩展名是否保留
+                _, old_ext = os.path.splitext(filename)
+                _, new_ext = os.path.splitext(new_filename)
+                if old_ext.lower() != new_ext.lower():
+                    print(f"  [!] AI 更改了文件扩展名（{old_ext} -> {new_ext}），跳过此文件。")
+                    continue
+
                 # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
                 if "/" in new_filename or "\\" in new_filename:
                     print("  [!] AI 试图更改路径，跳过此文件。")
                     continue
 
+                # 清理非法字符
+                new_filename = sanitize_filename(new_filename)
                 new_filename = get_unique_filename(root, new_filename)
                 new_filepath = os.path.join(root, new_filename)
                 print(f"  [AI 建议] -> {new_filename}")
