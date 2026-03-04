@@ -159,18 +159,16 @@ def main():
                 print(f"  [AI 建议] -> {new_filename}")
 
                 if not DRY_RUN:
-                        try:
-                            os.rename(old_filepath, new_filepath)
-                            print("  [成功] 文件已重命名。")
-                            # 挂载盘重命名建议稍微停顿，避免 115 封禁风控
-                            time.sleep(1.5)
-                        except Exception as e:
-                            print(f"  [失败] 重命名出错: {e}")
-                    else:
-                        print("  [DRY_RUN] 演练模式，未进行实际重命名。")
-                        time.sleep(
-                            0.5
-                        )  # 演练模式也稍微停顿，防止触发 DeepSeek 频率限制
+                    try:
+                        os.rename(old_filepath, new_filepath)
+                        print("  [成功] 文件已重命名。")
+                        # 挂载盘重命名建议稍微停顿，避免 115 封禁风控
+                        time.sleep(1.5)
+                    except Exception as e:
+                        print(f"  [失败] 重命名出错: {e}")
+                else:
+                    print("  [DRY_RUN] 演练模式，未进行实际重命名。")
+                    time.sleep(0.5)  # 演练模式也稍微停顿，防止触发 DeepSeek 频率限制
 
 
 if __name__ == "__main__":
