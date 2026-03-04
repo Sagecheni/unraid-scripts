@@ -38,7 +38,7 @@ VIDEO_EXTENSIONS = {
 # ==========================================
 
 # 初始化 Grok 客户端 (利用 OpenAI SDK)
-client = OpenAI(api_key=API_KEY, base_url="https://globalai.vip")
+client = OpenAI(api_key=API_KEY, base_url="https://globalai.vip/v1")
 
 
 def get_shortened_name(old_name):
