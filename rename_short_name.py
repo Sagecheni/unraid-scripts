@@ -69,10 +69,7 @@ def get_shortened_name(old_name):
             ],
             temperature=0.1,  # 极低的温度保证输出稳定
         )
-        print(f"  [调试] response类型: {type(response)}, 内容: {response}")
-        result = response.choices[0].message.content.strip()
-        print(f"  [API原始返回] {result}")
-        return result
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"  [!] API 请求失败: {e}")
         return None
@@ -149,13 +146,9 @@ def main():
                     print("  [!] AI 未返回建议，跳过此文件。")
                     continue
 
-                print(f"  [调试] AI 返回: {new_filename}")
-
                 if new_filename == filename:
                     print("  [!] AI 返回的文件名与原文件名相同，跳过。")
                     continue
-
-                if new_filename and new_filename != filename:
                     # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
                     if "/" in new_filename or "\\" in new_filename:
                         print("  [!] AI 试图更改路径，跳过此文件。")
