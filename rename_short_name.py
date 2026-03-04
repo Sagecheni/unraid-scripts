@@ -14,7 +14,7 @@ load_dotenv()
 API_KEY = os.getenv("GLOBALAI_API_KEY")
 
 # 填写你的 CD2 挂载路径（请修改为你实际的路径，建议先用一个子文件夹测试！）
-TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/"
+TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/Hentai"
 
 # 触发重命名的文件名长度阈值（超过此长度的才处理）
 MAX_FILENAME_LENGTH = 60
