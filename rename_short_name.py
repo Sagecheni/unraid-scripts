@@ -127,6 +127,14 @@ def main():
                 # 请求 AI 获取短文件名
                 new_filename = get_shortened_name(filename)
 
+                if not new_filename:
+                    print("  [!] AI 未返回建议，跳过此文件。")
+                    continue
+
+                if new_filename == filename:
+                    print("  [!] AI 返回的文件名与原文件名相同，跳过。")
+                    continue
+
                 if new_filename and new_filename != filename:
                     # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
                     if "/" in new_filename or "\\" in new_filename:
