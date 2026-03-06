@@ -91,11 +91,11 @@ def sanitize_filename(filename):
     """清理文件名中的非法字符"""
     # 移除或替换非法字符
     illegal_chars = r'[<>:"/\\|?*]'
-    sanitized = re.sub(illegal_chars, '', filename)
+    sanitized = re.sub(illegal_chars, "", filename)
     # 限制文件名长度（保留扩展名）
     name, ext = os.path.splitext(sanitized)
-    if len(sanitized.encode('utf-8')) > 255:
-        max_name_len = 255 - len(ext.encode('utf-8')) - 10  # 留一些余量
+    if len(sanitized.encode("utf-8")) > 255:
+        max_name_len = 255 - len(ext.encode("utf-8")) - 10  # 留一些余量
         name = name[:max_name_len]
         sanitized = name + ext
     return sanitized.strip()
@@ -198,7 +198,9 @@ def main():
                 _, old_ext = os.path.splitext(filename)
                 _, new_ext = os.path.splitext(new_filename)
                 if old_ext.lower() != new_ext.lower():
-                    print(f"  [!] AI 更改了文件扩展名（{old_ext} -> {new_ext}），跳过此文件。")
+                    print(
+                        f"  [!] AI 更改了文件扩展名（{old_ext} -> {new_ext}），跳过此文件。"
+                    )
                     continue
 
                 # 基础的安全检查：确保 AI 没有把后缀弄丢，且没有乱加路径符号
