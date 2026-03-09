@@ -19,8 +19,14 @@ WEB_PREFIX_RE = re.compile(
     r"(?i)(?:^|(?<=\s))(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s@]*)?@+"
 )
 WHITESPACE_RE = re.compile(r"\s+")
+SEPARATOR_SPACE_RE = re.compile(r"\s*([\-–—])\s*")
 UNSAFE_CHAR_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
 INVISIBLE_CHAR_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]")
+EAST_ASIAN_CHAR_CLASS = (
+    r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+    r"\u3040-\u30ff\u31f0-\u31ff"
+    r"\uac00-\ud7af"
+)
 
 
 def remove_web_prefixes(name: str) -> str:
@@ -33,13 +39,18 @@ def remove_web_prefixes(name: str) -> str:
 def sanitize_name(name: str) -> str:
     """
     清理名称：
-    - 将所有空白字符统一替换为下划线
+    - 先去掉连接符两侧的空白
+    - 将连续空白折叠为单个空格
+    - 中文/日文/韩文附近的空格直接删除
     - 删除常见非法字符和控制字符
     - 删除零宽等不可见字符
     """
-    name = WHITESPACE_RE.sub("_", name)
     name = INVISIBLE_CHAR_RE.sub("", name)
     name = UNSAFE_CHAR_RE.sub("", name)
+    name = SEPARATOR_SPACE_RE.sub(r"\1", name)
+    name = WHITESPACE_RE.sub(" ", name)
+    name = re.sub(fr"(?<=[{EAST_ASIAN_CHAR_CLASS}])\s+", "", name)
+    name = re.sub(fr"\s+(?=[{EAST_ASIAN_CHAR_CLASS}])", "", name)
     name = name.strip()
     return name
 
