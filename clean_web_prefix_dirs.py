@@ -18,18 +18,29 @@ SLEEP_SECONDS = 0.2
 WEB_PREFIX_RE = re.compile(
     r"(?i)(?:^|(?<=\s))(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s@]*)?@+"
 )
+WHITESPACE_RE = re.compile(r"\s+")
+UNSAFE_CHAR_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
+INVISIBLE_CHAR_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]")
 
 
 def remove_web_prefixes(name: str) -> str:
-    """移除名称中的网址型前缀，并压缩多余空白。"""
+    """移除名称中的网址型前缀。"""
     cleaned = WEB_PREFIX_RE.sub("", name)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = cleaned.strip()
     return cleaned
 
 
 def sanitize_name(name: str) -> str:
-    """清理名称中的尾部空白和非法路径分隔符。"""
-    name = name.replace("/", "").replace("\\", "").strip()
+    """
+    清理名称：
+    - 删除所有空白字符
+    - 删除常见非法字符和控制字符
+    - 删除零宽等不可见字符
+    """
+    name = WHITESPACE_RE.sub("", name)
+    name = INVISIBLE_CHAR_RE.sub("", name)
+    name = UNSAFE_CHAR_RE.sub("", name)
+    name = name.strip()
     return name
 
 
