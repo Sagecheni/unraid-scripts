@@ -33,11 +33,11 @@ def remove_web_prefixes(name: str) -> str:
 def sanitize_name(name: str) -> str:
     """
     清理名称：
-    - 删除所有空白字符
+    - 将所有空白字符统一替换为下划线
     - 删除常见非法字符和控制字符
     - 删除零宽等不可见字符
     """
-    name = WHITESPACE_RE.sub("", name)
+    name = WHITESPACE_RE.sub("_", name)
     name = INVISIBLE_CHAR_RE.sub("", name)
     name = UNSAFE_CHAR_RE.sub("", name)
     name = name.strip()
