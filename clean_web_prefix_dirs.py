@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 # ================= 配置区 =================
-TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/115open/NAS/98堂"
-DRY_RUN = True
+TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/kakio/NAS/98堂"
+DRY_RUN = False
 SLEEP_SECONDS = 0.2
 # ==========================================
 
@@ -49,8 +49,8 @@ def sanitize_name(name: str) -> str:
     name = UNSAFE_CHAR_RE.sub("", name)
     name = SEPARATOR_SPACE_RE.sub(r"\1", name)
     name = WHITESPACE_RE.sub(" ", name)
-    name = re.sub(fr"(?<=[{EAST_ASIAN_CHAR_CLASS}])\s+", "", name)
-    name = re.sub(fr"\s+(?=[{EAST_ASIAN_CHAR_CLASS}])", "", name)
+    name = re.sub(rf"(?<=[{EAST_ASIAN_CHAR_CLASS}])\s+", "", name)
+    name = re.sub(rf"\s+(?=[{EAST_ASIAN_CHAR_CLASS}])", "", name)
     name = name.strip()
     return name
 
