@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 
 # ================= 配置区 =================
-TARGET_DIR = "/mnt/user/CloudNAS/CloudDrive/kakio/NAS/98堂"
 DRY_RUN = False
 SLEEP_SECONDS = 0.2
 # ==========================================
@@ -106,8 +105,7 @@ def parse_args() -> argparse.Namespace:
         description="清理文件名和目录名中的网址型前缀（如 www.98T.la@）。"
     )
     ap.add_argument(
-        "--target-dir",
-        default=TARGET_DIR,
+        "target_dir",
         help="要扫描的根目录",
     )
     ap.add_argument(
